@@ -23,7 +23,6 @@ class Indexer:
                 positions_list = list(locate(tokens, lambda x: x == (token, _id)))
                 temp_dict[_id] = (tokens.count((token, _id)), positions_list)
                 self.indexed_tokens[token] = temp_dict
-                print(self.indexed_tokens)
             else:
                 positions_list = list(locate(tokens, lambda x: x == (token, _id)))
                 self.indexed_tokens[token][_id] = (tokens.count((token, _id)), positions_list)
