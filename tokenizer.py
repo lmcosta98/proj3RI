@@ -47,7 +47,7 @@ class Tokenizer:
 
         # Porter stemmer
         tokens = [(self.porter_stemmer.stem(t), _id) for t in data if t.isalpha()]
-
+        
         if flag:
             self.document_lengths[_id] = len(tokens)
             

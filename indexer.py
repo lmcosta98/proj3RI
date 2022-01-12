@@ -1,8 +1,10 @@
 import ast
 import os
 import psutil
-from typing import cast
 import math
+from typing import cast
+from more_itertools import locate
+
 
 
 class Indexer:
@@ -15,13 +17,16 @@ class Indexer:
         self.dictionary = {}
 
     def run(self, tokens):
-        for token, _id in tokens:
+        for token, _id in tokens:            
             if token not in self.indexed_tokens.keys():
                 temp_dict = dict()            
-                temp_dict[_id] = tokens.count((token, _id))
+                positions_list = list(locate(tokens, lambda x: x == (token, _id)))
+                temp_dict[_id] = (tokens.count((token, _id)), positions_list)
                 self.indexed_tokens[token] = temp_dict
+                print(self.indexed_tokens)
             else:
-                self.indexed_tokens[token][_id] = tokens.count((token, _id))
+                positions_list = list(locate(tokens, lambda x: x == (token, _id)))
+                self.indexed_tokens[token][_id] = (tokens.count((token, _id)), positions_list)
     
     
     def clear_index(self):
