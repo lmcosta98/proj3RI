@@ -66,7 +66,7 @@ class Indexer:
                 if len(line) > 1:
                     term = line[0]
                     postings_dict = ast.literal_eval(line[1])
-
+                    
                     used_mem = initial_mem - psutil.virtual_memory().available                
                     if used_mem > 300000000:
                         print("Writing part of index...")
@@ -127,10 +127,10 @@ class Indexer:
                 new_post_list = {}
                 # tf-idf weight
                 for _id, freq in value.items():
-                    tf = 1 + math.log10(freq)
+                    tf = 1 + math.log10(freq[0])
                     idf = math.log10(self.number_docs / len(value))
                     weight = tf * idf
-                    new_post_list[_id] = weight
+                    new_post_list[_id] = (weight, freq[1])
 
                 string = term + '; ' + str(new_post_list) + '\n'
                 f.write(string)
