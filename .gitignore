@@ -13,6 +13,9 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+blocks/
+datasets/
+index/
 .eggs/
 lib/
 lib64/
