@@ -62,7 +62,7 @@ class Ranker:
             # Create a new directory because it does not exist
             os.makedirs("search_output")
         query_file = self.queries_file.split("/")[-1]
-        with open("search_output/results_"+ str(query_file) + "_" + str(self.method)+".txt",'w') as f:
+        with open("search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+".txt",'w') as f:
             for query, doc_list in self.queries_results.items():
                 f.write("Q: {}\n".format(query))
                 for doc in doc_list:
