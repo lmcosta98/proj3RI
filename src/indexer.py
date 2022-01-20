@@ -60,6 +60,7 @@ class Indexer:
         initial_mem = psutil.virtual_memory().available
 
         while lines:
+            lines = sorted(lines, key=lambda x: x[0])
             for line, i in lines:
 
                 line = line.split(" : ")
@@ -101,12 +102,11 @@ class Indexer:
                             
 
             lines = [(block_file.readline()[:-1], i) for i, block_file in enumerate(blocks_files)]
-
             for line, i in lines:
                 if not line:
                     blocks_files.pop(i)
                     lines.pop(i)
-
+        
         print("Writing part of index...")
         self.write_dictionary()
         self.write_index(temp_index)

@@ -1,4 +1,6 @@
 import argparse
+import ast
+import sys
 from tokenizer import Tokenizer
 from indexer import Indexer
 from ranker import Ranker
@@ -65,6 +67,9 @@ class SPIMI:
         tokens = []
         self.indexer.clear_index()
         
+        # For bm25
+        self.tokenizer.writeDl()
+
         # Merge blocks  
         # Check whether path exists or not
         if not os.path.exists("index"):
@@ -82,11 +87,15 @@ class SPIMI:
         doc_lengths = None
         avg_dl = None
         if flag:
-            doc_lengths = self.tokenizer.get_document_lenghts()
-            avg_dl = self.tokenizer.avg_dl()
-            self.tokenizer.clear()
+            try:
+                f = open("dl.txt")
+                doc_lengths = ast.literal_eval(f.read())
+                avg_dl = sum(list(doc_lengths.values())) / len(doc_lengths.keys())
+            except:
+                print("Run indexer")
+                sys.exit()
 
-        ranker = Ranker(queries, self.tokenizer, ranking, 100, 1.2, 0.75, doc_lengths, avg_dl)
+        ranker = Ranker(queries, self.tokenizer, boost_flag, ranking, 100, 1.2, 0.75, doc_lengths, avg_dl)
         begin = time.time()
         ranker.run()
         print("Writing results...")
@@ -105,11 +114,15 @@ if __name__ == "__main__":
     cli_parser.add_argument("-r", "--ranking", type=str, default='vector',
                             help="Ranking algorithm. \n->\"vector\" for TF-IDF \n->\"bm25\" for BM25. Default is TD-IDF.")
     cli_parser.add_argument("-q", "--queries", default='queries/queries.txt', help="Select the file from which the queries are read. Default file is \'queries.txt\'")
+    cli_parser.add_argument("-b", "--boost", default='false', help="With or without boost - true or false")
     args = cli_parser.parse_args()
     
     data = args.dataset
     min_len = args.minimum
-    
+    boost_flag = False
+    if args.boost == "true":
+        boost_flag = True
+        
     if args.stopwords == None:
         stopwords = default_stopwords
     else:
@@ -129,7 +142,7 @@ if __name__ == "__main__":
     query_file = args.queries
 
     spimi = SPIMI(data, min_len,stopwords, 20000)
-    #spimi.run()
+    spimi.run()
     # If bm25 run() if required
-    if ranking == "vector" or ranking == "bm25":
-        spimi.search(ranking, query_file)
+    """if ranking == "vector" or ranking == "bm25":
+        spimi.search(ranking, query_file)"""

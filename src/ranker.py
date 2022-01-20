@@ -5,10 +5,11 @@ import re
 import os
 import ast
 import sys
+import time
 from node import Node
 
 class Ranker:
-    def __init__(self, queries_file, tokenizer, method="vector", docs_limit=100, k1=1.2, b=0.75, doc_lengths=None, avg_dl=None):
+    def __init__(self, queries_file, tokenizer, boost_flag, method="vector", docs_limit=50, k1=1.2, b=0.75, doc_lengths=None, avg_dl=None):
         self.queries_file = queries_file
         self.tokenizer = tokenizer
         self.method = method
@@ -20,6 +21,7 @@ class Ranker:
         self.avg_dl = avg_dl
         self.queries_results = {}
         self.dictionary = {}
+        self.boost_flag = boost_flag
 
 
     def run(self):
@@ -30,6 +32,7 @@ class Ranker:
             indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i, False))
 
             print(indexed_query)
+            begin = time.time()
             print("Searching {}º query...".format(i+1))
             best_docs = {}
             if self.method == 'vector':
@@ -37,8 +40,12 @@ class Ranker:
             elif self.method == 'bm25':
                 best_docs = self.rank_bm25(indexed_query)
 
-            self.queries_results[queries_list[i]] = best_docs
+            # Evaluate query
+            end = time.time()
+            self.evaluateQuery(i+1, best_docs, end - begin)
 
+            self.queries_results[queries_list[i]] = best_docs
+            
             #testing only first query 
             break
 
@@ -85,60 +92,58 @@ class Ranker:
     def rank_vector(self, indexed_query):
         scores = {}     #best docs
 
-        query_norm = 0
+        query_len = 0   # Norm query
         docs_norm = {}
         test_boost = {}
-        boost = False
         for term, tf in indexed_query.items():
             # Find where term is located
             print("--> ",term)
             right_index_file = self.findIndexFile(term)
+            print(right_index_file)
             # idf for each term    
             idf = self.dictionary[term][0]
             
             tf_weight = math.log10(tf) + 1
             weight_query_term = tf_weight * float(idf) # Weight for the term in the query
-            query_norm += weight_query_term ** 2
+            query_len += weight_query_term ** 2
 
             for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
-                # Boost
-                if doc_id not in test_boost:
-                    test_boost[doc_id] = [doc_weight[1]]
-                else:
+                    # Boost
+                    if self.boost_flag:
+                        if doc_id not in test_boost:
+                            test_boost[doc_id] = [doc_weight[1]]
+                        else:
+                            test_boost[doc_id].append(doc_weight[1])
 
-                    test_boost[doc_id].append(doc_weight[1])
+                    # Norms
+                    if doc_id not in docs_norm:
+                        docs_norm[doc_id] = doc_weight[0] ** 2
+                    else:
+                        docs_norm[doc_id] += doc_weight[0]  ** 2
 
-                # Norms
-                if doc_id not in docs_norm:
-                    docs_norm[doc_id] = doc_weight[0] ** 2
-                else:
-                    docs_norm[doc_id] += doc_weight[0]  ** 2
+                    score = (weight_query_term * doc_weight[0])
 
-                score = (weight_query_term * doc_weight[0])
-                # Boost
-                """if list(indexed_query.keys())[-1] == term:
-                    for d in test_boost:
-                        if """
-
-
-                if doc_id not in scores:
-                    scores[doc_id] = score
-                else:
-                    scores[doc_id] += score
-        
+                    if doc_id not in scores:
+                        scores[doc_id] = score
+                    else:
+                        scores[doc_id] += score
+                
+            self.temp_index = {}
+                
         # length normalize all scores
-        """for docID, score in scores.items():
-            length = math.sqrt(docs_norm[docID])
-            print(docID," -- ", score, length)
-            scores[docID] /= length"""
+        for docID, score in scores.items():
+            length = math.sqrt(docs_norm[docID]) * math.sqrt(query_len)
+            #print(docID," -- ", score, length)
+            scores[docID] /= length
 
-        for doc_id, arr in test_boost.items():
-            if len(arr) > 1:
-                #Boost this docs
-                min_diff = self.getMinDiff(arr)
-                if min_diff:
-                    boo = self.calc_boost(min_diff)
-                    scores[doc_id] += boo
+        if self.boost_flag:
+            for doc_id, arr in test_boost.items():
+                if len(arr) > 1:
+                    #Boost this docs
+                    min_diff = self.getMinDiff(arr)
+                    if min_diff:
+                        boo = self.calc_boost(min_diff)
+                        scores[doc_id] += boo
 
         best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return best_docs[:self.docs_limit] 
@@ -146,7 +151,7 @@ class Ranker:
 
     def rank_bm25(self, indexed_query):
         scores = {}     #best docs
-        
+        test_boost = {}
         for term, tf in indexed_query.items():
             # Find where term is located
             right_index_file = self.findIndexFile(term)
@@ -156,7 +161,14 @@ class Ranker:
             
             # weight = tf * idf 
             # logo, tf = weight / idf
+
             for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
+                # Boost
+                if doc_id not in test_boost:
+                    test_boost[doc_id] = [doc_weight[1]]
+                else:
+                    test_boost[doc_id].append(doc_weight[1])
+
                 doc_tf = doc_weight[0] / idf
                 doc_length = self.doc_lengths[doc_id]
                 score = self.calc_bm25(doc_tf, doc_length, self.avg_dl, idf)
@@ -166,13 +178,23 @@ class Ranker:
                 else:
                     scores[doc_id] += score
         
+
+        if self.boost_flag:
+            for doc_id, arr in test_boost.items():
+                if len(arr) > 1:
+                    #Boost this docs
+                    min_diff = self.getMinDiff(arr)
+                    if min_diff:
+                        boo = self.calc_boost(min_diff)
+                        scores[doc_id] += boo
+
         best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return best_docs[:self.docs_limit]
     
 
     def calc_bm25(self, doc_tf, doc_length, avg_dl, idf):    
         return idf * (((self.k1 + 1) * doc_tf) / (self.k1 * ((1-self.b) + self.b * doc_length / avg_dl) + doc_tf))
-        
+
 
     def calc_boost(self, min_range):
         return 12/math.log(1.5**min_range)
@@ -239,12 +261,53 @@ class Ranker:
                 with open("index/" + index_file) as f:
                     for line in f.readlines():
                         term_file,value = re.split('; ', line.rstrip('\n'), maxsplit=1)
-                        #term_idf = self.dictionary[term][0]
                         if range not in self.temp_index.keys():
                             self.temp_index[range] = {}
                         self.temp_index[range][term_file] = { "docs": ast.literal_eval(value)}
-                            
-                # we find the right index
+                # we find the right index file
                 break
         
         return right_index_file
+    
+    # Test
+    def readFileMem(self, index_file):
+        range = index_file.split('.')[0]
+        with open("index/" + index_file) as f:
+            for line in f.readlines():
+                term_file,value = re.split('; ', line.rstrip('\n'), maxsplit=1)
+                if range not in self.temp_index.keys():
+                    self.temp_index[range] = {}
+                self.temp_index[range][term_file] = { "docs": ast.literal_eval(value)}
+
+
+    def evaluateQuery(self, query_index, best_docs, time):
+        docs_ids = dict(list(best_docs.items())[:50])
+
+        tp = 0 # True Positives
+        fp = 0 # False Positives
+        tn = 0 # True Negatives
+        fn = 0 # True Positives
+
+        i = 0
+        # Read queries relevance
+        print(i)
+        with open('queries/queries.relevance.txt','r') as q_rel:
+            for line in q_rel.readlines():
+                line = line.replace("\n", "")
+                if 'Q:' in line:
+                    i+=1
+                #Read rel docs 
+                elif line != "":
+                    # Check same query
+                    if query_index == i:
+                        query_rel_list = line.split("\t")
+                        
+                        # if showing up and relevant - TP
+                        if query_rel_list[0] in docs_ids:
+                            tp += 1
+
+                        # if relevant and not showing up - FN
+                        if query_rel_list[0] not in docs_ids:
+                            fn += 1
+        
+        print(tp,fn)

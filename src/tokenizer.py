@@ -28,6 +28,12 @@ class Tokenizer:
     def get_document_lenghts(self):
         return self.document_lengths
     
+    def writeDl(self):
+        with open("dl.txt",'w') as f:
+            f.write(str(self.document_lengths))
+        
+
+    
     def avg_dl (self):
         return sum(list(self.document_lengths.values())) / len(self.document_lengths.keys())
     
@@ -48,7 +54,7 @@ class Tokenizer:
         # Porter stemmer
         tokens = [(self.porter_stemmer.stem(t), _id) for t in data if (t.isalpha() and t.isascii() and len(set(t)) != 1)]
 
-        if flag:
-            self.document_lengths[_id] = len(tokens)
+        #if flag:
+        self.document_lengths[_id] = len(tokens)
             
         return tokens
