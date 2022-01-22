@@ -28,21 +28,24 @@ class Ranker:
         #Process queries
         queries_list = self.readQuery()
         self.dictionary = self.readDictionary()
+
+        # Read queries relevance to evaluate
+        query_rel_list = self.readQueryRel()
         for i in range(len(queries_list)):
             indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i, False))
 
             print(indexed_query)
             begin = time.time()
             print("Searching {}º query...".format(i+1))
-            best_docs = {}
+            best_docs = []
             if self.method == 'vector':
-                best_docs = self.rank_vector(indexed_query)
+                best_docs = self.rank_vector2(indexed_query)
             elif self.method == 'bm25':
                 best_docs = self.rank_bm25(indexed_query)
 
             # Evaluate query
             end = time.time()
-            self.evaluateQuery(i+1, best_docs, end - begin)
+            self.evaluateQuery(query_rel_list[i+1], best_docs, end - begin)
 
             self.queries_results[queries_list[i]] = best_docs
             
@@ -73,7 +76,7 @@ class Ranker:
             for query, doc_list in self.queries_results.items():
                 f.write("Q: {}\n".format(query))
                 for doc in doc_list:
-                    f.write(str(doc[0])+" - "+str(doc[1])+"\n")
+                    f.write(str(doc[0])+"\t"+str(doc[1])+"\n")
                 f.write("\n")
 
 
@@ -280,34 +283,131 @@ class Ranker:
                 self.temp_index[range][term_file] = { "docs": ast.literal_eval(value)}
 
 
-    def evaluateQuery(self, query_index, best_docs, time):
-        docs_ids = dict(list(best_docs.items())[:50])
+    def evaluateQuery(self, query_relevance_docs, best_docs, time):
+        docs_ids = best_docs[:50]
 
         tp = 0 # True Positives
         fp = 0 # False Positives
-        tn = 0 # True Negatives
         fn = 0 # True Positives
 
-        i = 0
-        # Read queries relevance
-        print(i)
+        query_rel_docs = [doc[0] for doc in query_relevance_docs]
+        query_docs = [doc[0] for doc in docs_ids]
+        for doc in docs_ids:                
+            if doc[0] in query_rel_docs:
+                tp += 1
+
+            if doc[0] not in query_rel_docs:
+                fp += 1
+
+        for doc in query_relevance_docs:                
+            if doc[0] not in query_docs:
+                fn += 1
+
+        print("TP: {}   FP: {}  FN: {}".format(tp,fp,fn))
+
+        precision = tp / (tp+fp)
+        recall = tp / (tp+fn)
+        if recall + precision == 0:
+            f_score = 0
+        else:
+            f_score = (2 * recall * precision) / (recall + precision)
+
+        print("Precision: {}   Recall: {}  F_score: {}".format(precision,recall,f_score))
+
+    def readQueryRel(self):
+        rel_queries = {}
+        query_index = 0
         with open('queries/queries.relevance.txt','r') as q_rel:
             for line in q_rel.readlines():
                 line = line.replace("\n", "")
                 if 'Q:' in line:
-                    i+=1
+                    query_index+=1
                 #Read rel docs 
                 elif line != "":
-                    # Check same query
-                    if query_index == i:
-                        query_rel_list = line.split("\t")
-                        
-                        # if showing up and relevant - TP
-                        if query_rel_list[0] in docs_ids:
-                            tp += 1
+                    query_rel_list = line.split("\t")
+                    if query_index in rel_queries.keys():
+                        rel_queries[query_index].append((query_rel_list[0], query_rel_list[1]))
+                    else:
+                        rel_queries[query_index] = [(query_rel_list[0], query_rel_list[1])]
 
-                        # if relevant and not showing up - FN
-                        if query_rel_list[0] not in docs_ids:
-                            fn += 1
+        return rel_queries
+
+
+    # Version to read every index file that contains the term (correct version i guess)-- but the term was supposed to be in one file only...
+    def rank_vector2(self, indexed_query):
+        scores = {}     #best docs
+
+        query_len = 0   # Norm query
+        docs_norm = {}
+        test_boost = {}
+        for term, tf in indexed_query.items():
+            # Find where term is located
+            print("--> ",term)
+            right_index_files = self.findIndexFile2(term)
+            print(right_index_files)
+            # idf for each term    
+            idf = self.dictionary[term][0]
+            
+            tf_weight = math.log10(tf) + 1
+            weight_query_term = tf_weight * float(idf) # Weight for the term in the query
+            query_len += weight_query_term ** 2
+            # Read every file that contains the term
+            while right_index_files:
+                right_index_file = right_index_files[0].split('.')[0]
+                self.readFileMem(right_index_files[0])
+                for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
+                        # Boost
+                        if self.boost_flag:
+                            if doc_id not in test_boost:
+                                test_boost[doc_id] = [doc_weight[1]]
+                            else:
+                                test_boost[doc_id].append(doc_weight[1])
+
+                        # Norms
+                        if doc_id not in docs_norm:
+                            docs_norm[doc_id] = doc_weight[0] ** 2
+                        else:
+                            docs_norm[doc_id] += doc_weight[0]  ** 2
+
+                        score = (weight_query_term * doc_weight[0])
+
+                        if doc_id not in scores:
+                            scores[doc_id] = score
+                        else:
+                            scores[doc_id] += score
+                
+                right_index_files.pop(0)
+
+            self.temp_index = {}
+                
+        # length normalize all scores
+        for docID, score in scores.items():
+            length = math.sqrt(docs_norm[docID])
+            #print(docID," -- ", score, length)
+            scores[docID] /= length
+
+        if self.boost_flag:
+            for doc_id, arr in test_boost.items():
+                if len(arr) > 1:
+                    #Boost this docs
+                    min_diff = self.getMinDiff(arr)
+                    if min_diff:
+                        boo = self.calc_boost(min_diff)
+                        scores[doc_id] += boo
+
+        best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return best_docs[:self.docs_limit] 
+
+
+    def findIndexFile2(self, term):
+        indexes_list = [file for file in os.listdir("index") if file != '.DS_Store']
         
-        print(tp,fn)
+        right_index_files = []
+        for index_file in indexes_list:
+            range = index_file.split('.')[0]
+            first_word, last_word = range.split('_')[1:]
+            if term >= first_word and term <= last_word:
+                right_index_files.append(index_file)
+                
+        
+        return right_index_files

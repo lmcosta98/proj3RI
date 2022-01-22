@@ -15,6 +15,7 @@ class Indexer:
         self.index_num = 1
         self.number_docs = 0
         self.dictionary = {}
+        self.block_num = 1
 
     def run(self, tokens):
         for token, _id in tokens:            
@@ -41,13 +42,13 @@ class Indexer:
         return self.index_size
 
     def write_block(self, number):
-        print("Writing block...")
+        print("Writing block {} ...".format(self.block_num))
         sorted_index = dict(sorted(self.indexed_tokens.items()))
         with open("blocks/blocks_" + str(number) + ".txt",'w') as f:
             for token, value in sorted_index.items():
                 string = token + ' : ' + str(value) + '\n'
                 f.write(string)
-        
+        self.block_num += 1
         self.indexed_tokens = {}
 
     def merge_blocks(self, number_docs):
@@ -79,12 +80,13 @@ class Indexer:
                     # Update index
                     if term in temp_index.keys():
                         for _id in postings_dict.keys():
-                            if _id in temp_index[term]:
+                            if _id not in temp_index[term]:
+                                temp_index[term][_id] = postings_dict[_id]
+                                
+                            else:
                                 print(term,"---",temp_index[term][_id])
                                 temp_index[term][_id] += postings_dict[_id]
                                 print(term,"---: ",temp_index[term][_id])
-                            else:
-                                temp_index[term][_id] = postings_dict[_id]
 
                     else:
                         temp_index[term] = postings_dict

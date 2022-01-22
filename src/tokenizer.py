@@ -31,7 +31,8 @@ class Tokenizer:
     def writeDl(self):
         with open("dl.txt",'w') as f:
             f.write(str(self.document_lengths))
-        
+            
+        self.document_lengths = {}
 
     
     def avg_dl (self):
