@@ -1,0 +1,2 @@
+,Precision,Precision,Precision,Recall,Recall,Recall,F-measure,F-measure,F-measure,AVG-Precision,AVG-Precision,AVG-Precision,NDCG,NDCG,NDCG,Latency,Query Throughput
+Query,@10,@20,@50,@10,@20,@50,@10,@20,@50,@10,@20,@50,@10,@20,@50

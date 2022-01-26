@@ -1,3 +1,4 @@
+import csv
 from heapq import heappop, heappush
 import imp
 import math
@@ -7,6 +8,7 @@ import ast
 import sys
 import time
 from node import Node
+import numpy as np
 
 class Ranker:
     def __init__(self, queries_file, tokenizer, boost_flag, method="vector", docs_limit=50, k1=1.2, b=0.75, doc_lengths=None, avg_dl=None):
@@ -23,6 +25,12 @@ class Ranker:
         self.dictionary = {}
         self.boost_flag = boost_flag
 
+        # Evaluation means
+        self.mean_precision_10, self.mean_recall_10, self.mean_f_measure_10, self.mean_avg_p_10, self.mean_ndcg_10 = [], [], [], [], []
+        self.mean_precision_20, self.mean_recall_20, self.mean_f_measure_20, self.mean_avg_p_20, self.mean_ndcg_20 = [], [], [], [], []
+        self.mean_precision_50, self.mean_recall_50, self.mean_f_measure_50, self.mean_avg_p_50, self.mean_ndcg_50 = [], [], [], [], []
+        self.mean_latency = []
+        self.mean_q_throuput = []
 
     def run(self):
         #Process queries
@@ -31,26 +39,80 @@ class Ranker:
 
         # Read queries relevance to evaluate
         query_rel_list = self.readQueryRel()
+        #res_query_list = self.readQueryRes()
+
+        #Write header of evalution
+        self.writeEvalResults("header", [])
         for i in range(len(queries_list)):
+            begin = time.time()
             indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i, False))
 
             print(indexed_query)
-            begin = time.time()
             print("Searching {}º query...".format(i+1))
             best_docs = []
             if self.method == 'vector':
-                best_docs = self.rank_vector2(indexed_query)
+                best_docs = self.rank_vector(indexed_query)
             elif self.method == 'bm25':
                 best_docs = self.rank_bm25(indexed_query)
 
             # Evaluate query
             end = time.time()
-            self.evaluateQuery(query_rel_list[i+1], best_docs, end - begin)
-
+            print("Time: ", end-begin)
+            self.evaluateQuery(i+1,query_rel_list[i+1], best_docs, end - begin)
             self.queries_results[queries_list[i]] = best_docs
             
             #testing only first query 
-            break
+            #break
+
+        #Write evaluation means
+        self.writeEvalResults("means", []) #Header = True
+
+    def writeEvalResults(self, _type, content):
+        if _type == "header":
+            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "w")
+            writer = csv.writer(csv_file)
+            writer.writerow(['', 'Precision', 'Precision', 'Precision', 'Recall', 'Recall', 'Recall', 'F-measure', 'F-measure', 'F-measure', 'AVG-Precision', 'AVG-Precision', 'AVG-Precision', 'NDCG', 'NDCG', 'NDCG', 'Latency','Query Throughput'])
+            writer.writerow(['Query', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50'])
+
+            csv_file.close()
+        elif _type == "content":
+            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            writer = csv.writer(csv_file)
+            writer.writerow(content)
+
+            csv_file.close()
+        
+        elif _type == "means":
+            means = []
+            means.append("Means")
+            means.append(np.mean(self.mean_precision_10))
+            means.append(np.mean(self.mean_precision_20))
+            means.append(np.mean(self.mean_precision_50))
+
+            means.append(np.mean(self.mean_recall_10))
+            means.append(np.mean(self.mean_recall_20))
+            means.append(np.mean(self.mean_recall_50))
+
+            means.append(np.mean(self.mean_f_measure_10))
+            means.append(np.mean(self.mean_f_measure_20))
+            means.append(np.mean(self.mean_f_measure_50))
+
+            means.append(np.mean(self.mean_avg_p_10))
+            means.append(np.mean(self.mean_avg_p_20))
+            means.append(np.mean(self.mean_avg_p_50))
+
+            means.append(np.mean(self.mean_ndcg_10))
+            means.append(np.mean(self.mean_ndcg_20))
+            means.append(np.mean(self.mean_ndcg_50))
+
+            means.append(np.mean(self.mean_latency))
+            means.append(np.mean(self.mean_q_throuput))
+            
+            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            writer = csv.writer(csv_file)
+            writer.writerow(means)
+
+            csv_file.close()
 
     def readDictionary(self):
         f = open("dictionary/dictionary.txt")
@@ -149,7 +211,7 @@ class Ranker:
                         scores[doc_id] += boo
 
         best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return best_docs[:self.docs_limit] 
+        return dict(best_docs[:self.docs_limit])
     
 
     def rank_bm25(self, indexed_query):
@@ -180,7 +242,8 @@ class Ranker:
                     scores[doc_id] = score
                 else:
                     scores[doc_id] += score
-        
+            
+            self.temp_index={}
 
         if self.boost_flag:
             for doc_id, arr in test_boost.items():
@@ -192,7 +255,7 @@ class Ranker:
                         scores[doc_id] += boo
 
         best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return best_docs[:self.docs_limit]
+        return dict(best_docs[:self.docs_limit])
     
 
     def calc_bm25(self, doc_tf, doc_length, avg_dl, idf):    
@@ -203,7 +266,8 @@ class Ranker:
         return 12/math.log(1.5**min_range)
 
 
-    def getMinDiff(self, lists):
+    # Get smallest diference - https://www.techiedelight.com/find-smallest-range-least-one-element-given-lists/
+    def getMinDiff(self, lists):    
         # invalid input
         if not lists:
             return None
@@ -283,36 +347,112 @@ class Ranker:
                 self.temp_index[range][term_file] = { "docs": ast.literal_eval(value)}
 
 
-    def evaluateQuery(self, query_relevance_docs, best_docs, time):
-        docs_ids = best_docs[:50]
+    def evaluateQuery(self, index, query_relevance_docs, best_docs, time):
+        # query_relevance_docs = { query1_id : { doc_1: relevance, doc_2: relevance,...},...}
+        # best_docs = { query1_id : { doc_1: score, doc_2: score,...},...}
+        docs_eval_num = [10,20,50]
 
-        tp = 0 # True Positives
-        fp = 0 # False Positives
-        fn = 0 # True Positives
+        for num in docs_eval_num:
+            tp = 0 # True Positives
+            fp = 0 # False Positives
+            fn = 0 # True Positives
 
-        query_rel_docs = [doc[0] for doc in query_relevance_docs]
-        query_docs = [doc[0] for doc in docs_ids]
-        for doc in docs_ids:                
-            if doc[0] in query_rel_docs:
-                tp += 1
+            precisions_avg = []
+            cg_list = []
+            docs_ids = dict(list(best_docs.items())[:num])
+            print("\nNUM--------------: ",num)
+            for doc in docs_ids:    
+                # True Pos            
+                if doc in query_relevance_docs:
+                    tp += 1
+                    #AVG Precision
+                    temp_avg_p = tp / (tp+fp)
+                    precisions_avg.append(temp_avg_p)
 
-            if doc[0] not in query_rel_docs:
-                fp += 1
+                    rel = query_relevance_docs[doc]
+                    cg_list.append(int(rel))  
 
-        for doc in query_relevance_docs:                
-            if doc[0] not in query_docs:
-                fn += 1
+                # False Pos  
+                else:
+                    fp += 1
 
-        print("TP: {}   FP: {}  FN: {}".format(tp,fp,fn))
+            for doc in query_relevance_docs:     
+                # False Neg            
+                if doc not in docs_ids:
+                    fn += 1
 
-        precision = tp / (tp+fp)
-        recall = tp / (tp+fn)
-        if recall + precision == 0:
-            f_score = 0
-        else:
-            f_score = (2 * recall * precision) / (recall + precision)
+            print("TP: {}   FP: {}  FN: {}".format(tp,fp,fn))
 
-        print("Precision: {}   Recall: {}  F_score: {}".format(precision,recall,f_score))
+            precision = tp / (tp+fp)
+            recall = tp / (tp+fn)
+            if precision + recall == 0:
+                f_measure = 0
+            else:
+                f_measure = (2 * precision * recall) / (precision + recall)
+
+            if tp != 0:
+                avg_p = sum(precisions_avg) / tp
+            else:
+                avg_p = 0
+
+            #NDCG
+            dcg_list = [rel/math.log2((i+1) + 1) for i, rel in enumerate(cg_list)]
+            idcg_list = [rel/math.log2((i+1) + 1) for i, rel in enumerate(sorted(cg_list, reverse=True))]
+            dcg = sum(dcg_list)
+            idcg = sum(idcg_list)
+            # Normalized DCG score
+            if idcg == 0:
+                ndcg = 0
+            else:
+                ndcg = dcg / idcg
+
+            if num==10:
+                    recall_10 = recall
+                    precision_10 = precision
+                    f_10 = f_measure
+                    ap_10 = avg_p
+                    ndcg_10 = ndcg
+
+                    # add to mean lists
+                    self.mean_precision_10.append(precision)
+                    self.mean_recall_10.append(recall)
+                    self.mean_f_measure_10.append(f_measure)
+                    self.mean_avg_p_10.append(avg_p)
+                    self.mean_ndcg_10.append(ndcg)
+
+            elif num==20:
+                    recall_20 = recall
+                    precision_20 = precision
+                    f_20 = f_measure
+                    ap_20 = avg_p
+                    ndcg_20 = ndcg
+
+                    # add to mean lists
+                    self.mean_precision_20.append(precision)
+                    self.mean_recall_20.append(recall)
+                    self.mean_f_measure_20.append(f_measure)
+                    self.mean_avg_p_20.append(avg_p)
+                    self.mean_ndcg_20.append(ndcg)
+            elif num==50:
+                    recall_50 = recall
+                    precision_50 = precision
+                    f_50 = f_measure
+                    ap_50 = avg_p
+                    ndcg_50 = ndcg
+
+                    # add to mean lists
+                    self.mean_precision_50.append(precision)
+                    self.mean_recall_50.append(recall)
+                    self.mean_f_measure_50.append(f_measure)
+                    self.mean_avg_p_50.append(avg_p)
+                    self.mean_ndcg_50.append(ndcg)
+        
+        self.mean_latency.append(time)
+        self.mean_q_throuput.append(1/time)
+        content_list = [index, precision_10,precision_20,precision_50, recall_10, recall_20, recall_50, f_10, f_20, f_50 \
+                ,ap_10,ap_20,ap_50, ndcg_10, ndcg_20, ndcg_50, time, 1/time]
+        self.writeEvalResults("content",content_list)
+        
 
     def readQueryRel(self):
         rel_queries = {}
@@ -326,9 +466,31 @@ class Ranker:
                 elif line != "":
                     query_rel_list = line.split("\t")
                     if query_index in rel_queries.keys():
-                        rel_queries[query_index].append((query_rel_list[0], query_rel_list[1]))
+                        rel_queries[query_index][query_rel_list[0]] = query_rel_list[1]
                     else:
-                        rel_queries[query_index] = [(query_rel_list[0], query_rel_list[1])]
+                        rel_queries[query_index] = {}
+                        rel_queries[query_index][query_rel_list[0]] = query_rel_list[1]
+
+        return rel_queries
+
+
+    #Test for evaluation
+    def readQueryRes(self):
+        rel_queries = {}
+        query_index = 0
+        with open('search_output/results_queries_bm25.txt','r') as q_rel:
+            for line in q_rel.readlines():
+                line = line.replace("\n", "")
+                if 'Q:' in line:
+                    query_index+=1
+                #Read rel docs 
+                elif line != "":
+                    query_rel_list = line.split("\t")
+                    if query_index in rel_queries.keys():
+                        rel_queries[query_index][query_rel_list[0]] = query_rel_list[1]
+                    else:
+                        rel_queries[query_index] = {}
+                        rel_queries[query_index][query_rel_list[0]] = query_rel_list[1]
 
         return rel_queries
 
@@ -396,7 +558,7 @@ class Ranker:
                         scores[doc_id] += boo
 
         best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return best_docs[:self.docs_limit] 
+        return dict(best_docs[:self.docs_limit])
 
 
     def findIndexFile2(self, term):
@@ -411,3 +573,52 @@ class Ranker:
                 
         
         return right_index_files
+
+
+    def rank_bm25_2(self, indexed_query):
+        scores = {}     #best docs
+        test_boost = {}
+        for term, tf in indexed_query.items():
+            # Find where term is located
+            right_index_files = self.findIndexFile2(term)
+            print(right_index_files)
+            # idf for each term
+            idf = self.dictionary[term][0]
+            
+            # weight = tf * idf 
+            # logo, tf = weight / idf
+            # Read every file that contains the term
+            while right_index_files:
+                right_index_file = right_index_files[0].split('.')[0]
+                self.readFileMem(right_index_files[0])
+                for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
+                    # Boost
+                    if doc_id not in test_boost:
+                        test_boost[doc_id] = [doc_weight[1]]
+                    else:
+                        test_boost[doc_id].append(doc_weight[1])
+
+                    doc_tf = doc_weight[0] / idf
+                    doc_length = self.doc_lengths[doc_id]
+                    score = self.calc_bm25(doc_tf, doc_length, self.avg_dl, idf)
+
+                    if doc_id not in scores:
+                        scores[doc_id] = score
+                    else:
+                        scores[doc_id] += score
+        
+                right_index_files.pop(0)
+            
+                self.temp_index={}
+
+        if self.boost_flag:
+            for doc_id, arr in test_boost.items():
+                if len(arr) > 1:
+                    #Boost this docs
+                    min_diff = self.getMinDiff(arr)
+                    if min_diff:
+                        boo = self.calc_boost(min_diff)
+                        scores[doc_id] += boo
+
+        best_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return dict(best_docs[:self.docs_limit])
