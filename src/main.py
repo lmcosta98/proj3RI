@@ -59,7 +59,10 @@ class SPIMI:
                     count=0
 
         if tokens != []:
-            self.indexer.run(tokens)
+            self.indexer.run(tokens) 
+            if not os.path.exists("blocks"):
+                # Create a new directory because it does not exist
+                os.makedirs("blocks")
             self.indexer.write_block(self.block_num)
         
         
