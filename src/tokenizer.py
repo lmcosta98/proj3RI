@@ -39,7 +39,7 @@ class Tokenizer:
         return sum(list(self.document_lengths.values())) / len(self.document_lengths.keys())
     
 
-    def get_tokens(self, _data, _id, flag):
+    def get_tokens(self, _data, _id):
         # Remove non ASCII characters
         data = re.sub('\W+', ' ', _data).lower().split()
 
@@ -55,7 +55,7 @@ class Tokenizer:
         # Porter stemmer
         tokens = [(self.porter_stemmer.stem(t), _id) for t in data if (t.isalpha() and t.isascii() and len(set(t)) != 1)]
 
-        #if flag:
+        #bm25
         self.document_lengths[_id] = len(tokens)
             
         return tokens

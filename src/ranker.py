@@ -11,7 +11,7 @@ from node import Node
 import numpy as np
 
 class Ranker:
-    def __init__(self, queries_file, tokenizer, boost_flag, method="vector", docs_limit=50, k1=1.2, b=0.75, doc_lengths=None, avg_dl=None):
+    def __init__(self, queries_file, tokenizer, boost_flag, norm_flag, method="vector", docs_limit=50, k1=1.2, b=0.75, doc_lengths=None, avg_dl=None):
         self.queries_file = queries_file
         self.tokenizer = tokenizer
         self.method = method
@@ -24,6 +24,7 @@ class Ranker:
         self.queries_results = {}
         self.dictionary = {}
         self.boost_flag = boost_flag
+        self.norm_flag = norm_flag
 
         # Evaluation means
         self.mean_precision_10, self.mean_recall_10, self.mean_f_measure_10, self.mean_avg_p_10, self.mean_ndcg_10 = [], [], [], [], []
@@ -33,19 +34,21 @@ class Ranker:
         self.mean_q_throuput = []
 
     def run(self):
-        #Process queries
-        queries_list = self.readQuery()
+        '''
+        Process queries
+        '''
+        queries_list = self.readQueries()
         self.dictionary = self.readDictionary()
 
         # Read queries relevance to evaluate
         query_rel_list = self.readQueryRel()
         #res_query_list = self.readQueryRes()
 
-        #Write header of evalution
+        #Write header of evaluation
         self.writeEvalResults("header", [])
         for i in range(len(queries_list)):
             begin = time.time()
-            indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i, False))
+            indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i))
 
             print(indexed_query)
             print("Searching {}º query...".format(i+1))
@@ -57,7 +60,8 @@ class Ranker:
 
             # Evaluate query
             end = time.time()
-            print("Time: ", end-begin)
+            print("Time latency(sec): ", end-begin)
+            print("Evaluating {}º query...".format(i+1))
             self.evaluateQuery(i+1,query_rel_list[i+1], best_docs, end - begin)
             self.queries_results[queries_list[i]] = best_docs
             
@@ -68,15 +72,20 @@ class Ranker:
         self.writeEvalResults("means", []) #Header = True
 
     def writeEvalResults(self, _type, content):
+        if self.boost_flag:
+            eval_file_path = "evaluation_results/eval_results_"+self.method+"_Boosted.csv"
+        else:
+            eval_file_path = "evaluation_results/eval_results_"+self.method+"_notBoosted.csv"
+
         if _type == "header":
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "w")
+            csv_file = open(eval_file_path, "w")
             writer = csv.writer(csv_file)
             writer.writerow(['', 'Precision', 'Precision', 'Precision', 'Recall', 'Recall', 'Recall', 'F-measure', 'F-measure', 'F-measure', 'AVG-Precision', 'AVG-Precision', 'AVG-Precision', 'NDCG', 'NDCG', 'NDCG', 'Latency','Query Throughput'])
             writer.writerow(['Query', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50'])
 
             csv_file.close()
         elif _type == "content":
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            csv_file = open(eval_file_path, "a")
             writer = csv.writer(csv_file)
             writer.writerow(content)
 
@@ -108,7 +117,7 @@ class Ranker:
             means.append(np.mean(self.mean_latency))
             means.append(np.mean(self.mean_q_throuput))
             
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            csv_file = open(eval_file_path, "a")
             writer = csv.writer(csv_file)
             writer.writerow(means)
 
@@ -118,7 +127,7 @@ class Ranker:
         f = open("dictionary/dictionary.txt")
         return ast.literal_eval(f.read())
 
-    def readQuery(self):
+    def readQueries(self):
         queries_list = []
         with open(self.queries_file) as f:
             lines = f.readlines()
@@ -134,11 +143,16 @@ class Ranker:
             # Create a new directory because it does not exist
             os.makedirs("search_output")
         query_file = self.queries_file.split("/")[-1]
-        with open("search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+".txt",'w') as f:
+        
+        if self.boost_flag:
+            res_file_path = "search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+"_Boosted.txt"
+        else:
+            res_file_path = "search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+"_notBoosted.txt"
+        with open(res_file_path,'w') as f:
             for query, doc_list in self.queries_results.items():
-                f.write("Q: {}\n".format(query))
+                f.write("Q:{}\n".format(query))
                 for doc in doc_list:
-                    f.write(str(doc[0])+"\t"+str(doc[1])+"\n")
+                    f.write(str(doc)+"\t"+str(doc_list[doc])+"\n")
                 f.write("\n")
 
 
@@ -161,10 +175,13 @@ class Ranker:
         docs_norm = {}
         test_boost = {}
         for term, tf in indexed_query.items():
-            # Find where term is located
-            print("--> ",term)
-            right_index_file = self.findIndexFile(term)
-            print(right_index_file)
+            print("-->: ",term)
+            # Check if is in memory
+            if term not in self.temp_index:
+                print("Term not in memory")
+                self.temp_index={}
+                # Find where term is located
+                self.findIndexFile(term)
             # idf for each term    
             idf = self.dictionary[term][0]
             
@@ -172,7 +189,7 @@ class Ranker:
             weight_query_term = tf_weight * float(idf) # Weight for the term in the query
             query_len += weight_query_term ** 2
 
-            for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
+            for doc_id, doc_weight in self.temp_index[term]['docs'].items():
                     # Boost
                     if self.boost_flag:
                         if doc_id not in test_boost:
@@ -181,10 +198,11 @@ class Ranker:
                             test_boost[doc_id].append(doc_weight[1])
 
                     # Norms
-                    if doc_id not in docs_norm:
-                        docs_norm[doc_id] = doc_weight[0] ** 2
-                    else:
-                        docs_norm[doc_id] += doc_weight[0]  ** 2
+                    if self.norm_flag:
+                        if doc_id not in docs_norm:
+                            docs_norm[doc_id] = doc_weight[0] ** 2
+                        else:
+                            docs_norm[doc_id] += doc_weight[0]  ** 2
 
                     score = (weight_query_term * doc_weight[0])
 
@@ -193,13 +211,12 @@ class Ranker:
                     else:
                         scores[doc_id] += score
                 
-            self.temp_index = {}
                 
         # length normalize all scores
-        for docID, score in scores.items():
-            length = math.sqrt(docs_norm[docID]) * math.sqrt(query_len)
-            #print(docID," -- ", score, length)
-            scores[docID] /= length
+        if self.norm_flag:
+            for docID, score in scores.items():
+                length = math.sqrt(docs_norm[docID]) * math.sqrt(query_len)
+                scores[docID] /= length
 
         if self.boost_flag:
             for doc_id, arr in test_boost.items():
@@ -218,21 +235,26 @@ class Ranker:
         scores = {}     #best docs
         test_boost = {}
         for term, tf in indexed_query.items():
-            # Find where term is located
-            right_index_file = self.findIndexFile(term)
-
+            print("-->: ",term)
+            # Check if is in memory
+            if term not in self.temp_index:
+                print("Term not in memory")
+                self.temp_index={}
+                # Find where term is located
+                self.findIndexFile(term)
             # idf for each term
             idf = self.dictionary[term][0]
             
             # weight = tf * idf 
             # logo, tf = weight / idf
 
-            for doc_id, doc_weight in self.temp_index[right_index_file][term]['docs'].items():
+            for doc_id, doc_weight in self.temp_index[term]['docs'].items():
                 # Boost
-                if doc_id not in test_boost:
-                    test_boost[doc_id] = [doc_weight[1]]
-                else:
-                    test_boost[doc_id].append(doc_weight[1])
+                if self.boost_flag:
+                    if doc_id not in test_boost:
+                        test_boost[doc_id] = [doc_weight[1]]
+                    else:
+                        test_boost[doc_id].append(doc_weight[1])
 
                 doc_tf = doc_weight[0] / idf
                 doc_length = self.doc_lengths[doc_id]
@@ -241,9 +263,7 @@ class Ranker:
                 if doc_id not in scores:
                     scores[doc_id] = score
                 else:
-                    scores[doc_id] += score
-            
-            self.temp_index={}
+                    scores[doc_id] += score            
 
         if self.boost_flag:
             for doc_id, arr in test_boost.items():
@@ -263,11 +283,14 @@ class Ranker:
 
 
     def calc_boost(self, min_range):
-        return 12/math.log(1.5**min_range)
+        return 10/math.log(1.5**min_range)
 
 
     # Get smallest diference - https://www.techiedelight.com/find-smallest-range-least-one-element-given-lists/
     def getMinDiff(self, lists):    
+        '''
+        Get smallest diference - https://www.techiedelight.com/find-smallest-range-least-one-element-given-lists/
+        '''
         # invalid input
         if not lists:
             return None
@@ -317,6 +340,9 @@ class Ranker:
 
 
     def findIndexFile(self, term):
+        '''
+        Get the index file that contains the term and bring it to memory
+        '''
         indexes_list = [file for file in os.listdir("index") if file != '.DS_Store']
         
         right_index_file = None
@@ -325,15 +351,14 @@ class Ranker:
             first_word, last_word = range.split('_')[1:]
             if term >= first_word and term <= last_word:
                 right_index_file = range
+                print(right_index_file)
                 with open("index/" + index_file) as f:
                     for line in f.readlines():
+                        print(line)
                         term_file,value = re.split('; ', line.rstrip('\n'), maxsplit=1)
-                        if range not in self.temp_index.keys():
-                            self.temp_index[range] = {}
-                        self.temp_index[range][term_file] = { "docs": ast.literal_eval(value)}
+                        self.temp_index[term_file] = { "docs": ast.literal_eval(value)}
                 # we find the right index file
                 break
-        
         return right_index_file
     
     # Test
@@ -526,10 +551,11 @@ class Ranker:
                                 test_boost[doc_id].append(doc_weight[1])
 
                         # Norms
-                        if doc_id not in docs_norm:
-                            docs_norm[doc_id] = doc_weight[0] ** 2
-                        else:
-                            docs_norm[doc_id] += doc_weight[0]  ** 2
+                        if self.norm_flag:
+                            if doc_id not in docs_norm:
+                                docs_norm[doc_id] = doc_weight[0] ** 2
+                            else:
+                                docs_norm[doc_id] += doc_weight[0]  ** 2
 
                         score = (weight_query_term * doc_weight[0])
 
@@ -543,15 +569,17 @@ class Ranker:
             self.temp_index = {}
                 
         # length normalize all scores
-        for docID, score in scores.items():
-            length = math.sqrt(docs_norm[docID])
-            #print(docID," -- ", score, length)
-            scores[docID] /= length
+        if self.norm_flag:
+            for docID, score in scores.items():
+                length = math.sqrt(docs_norm[docID])
+                #print(docID," -- ", score, length)
+                scores[docID] /= length
 
         if self.boost_flag:
             for doc_id, arr in test_boost.items():
                 if len(arr) > 1:
                     #Boost this docs
+                    print("Boost: ",doc_id)
                     min_diff = self.getMinDiff(arr)
                     if min_diff:
                         boo = self.calc_boost(min_diff)
@@ -570,7 +598,6 @@ class Ranker:
             first_word, last_word = range.split('_')[1:]
             if term >= first_word and term <= last_word:
                 right_index_files.append(index_file)
-                
         
         return right_index_files
 

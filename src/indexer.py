@@ -70,7 +70,7 @@ class Indexer:
                     postings_dict = ast.literal_eval(line[1])
                     
                     used_mem = initial_mem - psutil.virtual_memory().available                
-                    if used_mem > 300000000:
+                    if used_mem > 1000000000:
                         print("Writing part of index...")
                         self.write_index(temp_index)
                         temp_index = {}
@@ -80,13 +80,7 @@ class Indexer:
                     # Update index
                     if term in temp_index.keys():
                         for _id in postings_dict.keys():
-                            if _id not in temp_index[term]:
-                                temp_index[term][_id] = postings_dict[_id]
-                                
-                            else:
-                                print(term,"---",temp_index[term][_id])
-                                temp_index[term][_id] += postings_dict[_id]
-                                print(term,"---: ",temp_index[term][_id])
+                            temp_index[term][_id] = postings_dict[_id]
 
                     else:
                         temp_index[term] = postings_dict

@@ -8,7 +8,7 @@ from ranker import Ranker
 from tokenizer import Tokenizer
 
 
-def search(tokenizer, ranking, queries):     
+def search(tokenizer, ranking, queries, norm_flag):     
     doc_lengths = None
     avg_dl = None
     begin = time.time()
@@ -21,7 +21,7 @@ def search(tokenizer, ranking, queries):
             print("Run indexer")
             sys.exit()
 
-    ranker = Ranker(queries, tokenizer, boost_flag, ranking, 50, 1.2, 0.75, doc_lengths, avg_dl)
+    ranker = Ranker(queries, tokenizer, boost_flag, norm_flag, ranking, 50, 1.2, 0.75, doc_lengths, avg_dl)
     
     ranker.run()
     print("Writing results...")
@@ -37,13 +37,19 @@ if __name__ == "__main__":
     cli_parser.add_argument("-r", "--ranking", type=str, default='vector',
                             help="Ranking algorithm. \n->\"vector\" for TF-IDF \n->\"bm25\" for BM25. Default is TD-IDF.")
     cli_parser.add_argument("-q", "--queries", default='queries/queries.txt', help="Select the file from which the queries are read. Default file is \'queries.txt\'")
-    cli_parser.add_argument("-b", "--boost", default='false', help="With or without boost - true or false")
+    cli_parser.add_argument("-b", "--boost", default='false', help="With or without boost - true or false. Defualt false.")
+    cli_parser.add_argument("-n", "--norm", default='true', help="With or without score normalization - true or false. Defualt true.")
     args = cli_parser.parse_args()
     
     min_len = args.minimum
     boost_flag = False
-    if args.boost == "true":
+    if args.boost.lower() == "true":
+        print("Boost activated!")
         boost_flag = True
+
+    norm_flag = False
+    if args.norm.lower() == "true":
+        norm_flag = True
 
     if args.stopwords == None:
         stopwords = default_stopwords
@@ -64,4 +70,6 @@ if __name__ == "__main__":
     query_file = args.queries
     tokenizer = Tokenizer(min_len,stopwords)
     if ranking == "vector" or ranking == "bm25":
-        search(tokenizer, ranking, query_file)
+        search(tokenizer, ranking, query_file, norm_flag)
+    else:
+        print("Ranking method not available!")
