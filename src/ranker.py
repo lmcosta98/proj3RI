@@ -68,15 +68,16 @@ class Ranker:
         self.writeEvalResults("means", []) #Header = True
 
     def writeEvalResults(self, _type, content):
+        file = "../evaluation_results/eval_results_"+self.method+".csv"
         if _type == "header":
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "w")
+            csv_file = open(file, "w")
             writer = csv.writer(csv_file)
             writer.writerow(['', 'Precision', 'Precision', 'Precision', 'Recall', 'Recall', 'Recall', 'F-measure', 'F-measure', 'F-measure', 'AVG-Precision', 'AVG-Precision', 'AVG-Precision', 'NDCG', 'NDCG', 'NDCG', 'Latency','Query Throughput'])
             writer.writerow(['Query', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50', '@10', '@20', '@50'])
 
             csv_file.close()
         elif _type == "content":
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            csv_file = open(file, "a")
             writer = csv.writer(csv_file)
             writer.writerow(content)
 
@@ -108,7 +109,7 @@ class Ranker:
             means.append(np.mean(self.mean_latency))
             means.append(np.mean(self.mean_q_throuput))
             
-            csv_file = open("evaluation_results/eval_results_"+self.method+".csv", "a")
+            csv_file = open(file, "a")
             writer = csv.writer(csv_file)
             writer.writerow(means)
 
@@ -134,7 +135,7 @@ class Ranker:
             # Create a new directory because it does not exist
             os.makedirs("search_output")
         query_file = self.queries_file.split("/")[-1]
-        with open("search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+".txt",'w') as f:
+        with open("../search_output/results_"+ str(query_file.split('.')[0]) + "_" + str(self.method)+".txt",'w') as f:
             for query, doc_list in self.queries_results.items():
                 f.write("Q: {}\n".format(query))
                 for doc in doc_list:
@@ -250,6 +251,7 @@ class Ranker:
                 if len(arr) > 1:
                     #Boost this docs
                     min_diff = self.getMinDiff(arr)
+                    print(str(min_diff))
                     if min_diff:
                         boo = self.calc_boost(min_diff)
                         scores[doc_id] += boo
@@ -457,7 +459,7 @@ class Ranker:
     def readQueryRel(self):
         rel_queries = {}
         query_index = 0
-        with open('queries/queries.relevance.txt','r') as q_rel:
+        with open('../queries/queries.relevance.txt','r') as q_rel:
             for line in q_rel.readlines():
                 line = line.replace("\n", "")
                 if 'Q:' in line:
@@ -478,7 +480,7 @@ class Ranker:
     def readQueryRes(self):
         rel_queries = {}
         query_index = 0
-        with open('search_output/results_queries_bm25.txt','r') as q_rel:
+        with open('../search_output/results_queries_bm25.txt','r') as q_rel:
             for line in q_rel.readlines():
                 line = line.replace("\n", "")
                 if 'Q:' in line:
@@ -570,7 +572,6 @@ class Ranker:
             first_word, last_word = range.split('_')[1:]
             if term >= first_word and term <= last_word:
                 right_index_files.append(index_file)
-                
         
         return right_index_files
 

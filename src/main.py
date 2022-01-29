@@ -51,7 +51,7 @@ class SPIMI:
                         os.makedirs("blocks")
 
                     self.indexer.write_block(self.block_num)
-                    print(time.time()-begin)
+                    print((time.time()-begin)/60)
                     self.block_num += 1
                     
                     # clear memory
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-s", "--stopwords", default=None, help="Stopword list. Enter 'D' to deactivate")
     cli_parser.add_argument("-r", "--ranking", type=str, default='vector',
                             help="Ranking algorithm. \n->\"vector\" for TF-IDF \n->\"bm25\" for BM25. Default is TD-IDF.")
-    cli_parser.add_argument("-q", "--queries", default='queries/queries.txt', help="Select the file from which the queries are read. Default file is \'queries.txt\'")
+    cli_parser.add_argument("-q", "--queries", default='../queries/queries.txt', help="Select the file from which the queries are read. Default file is \'queries.txt\'")
     cli_parser.add_argument("-b", "--boost", default='false', help="With or without boost - true or false")
     args = cli_parser.parse_args()
     
@@ -146,6 +146,7 @@ if __name__ == "__main__":
 
     spimi = SPIMI(data, min_len,stopwords, 20000)
     spimi.run()
+    spimi.search(ranking, query_file)
     # If bm25 run() if required
     """if ranking == "vector" or ranking == "bm25":
         spimi.search(ranking, query_file)"""

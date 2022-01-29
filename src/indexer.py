@@ -18,14 +18,19 @@ class Indexer:
         self.block_num = 1
 
     def run(self, tokens):
-        for token, _id in tokens:            
+        
+        for token, _id in tokens:
+            positions_list = list(locate(tokens, lambda x: x == (token, _id)))
+            
+            # Trying to get the 2 nearest neighbours of a token
+            #neighbours = {i:(tokens[i-2][0], tokens[i-1][0], tokens[i+1][0], tokens[i+2][0]) for i in positions_list if (i+2 < len(tokens) and i > 1)}
+            #print(neighbours)
+            
             if token not in self.indexed_tokens.keys():
                 temp_dict = dict()            
-                positions_list = list(locate(tokens, lambda x: x == (token, _id)))
                 temp_dict[_id] = (tokens.count((token, _id)), positions_list)
                 self.indexed_tokens[token] = temp_dict
             else:
-                positions_list = list(locate(tokens, lambda x: x == (token, _id)))
                 self.indexed_tokens[token][_id] = (tokens.count((token, _id)), positions_list)
     
     
@@ -143,7 +148,7 @@ class Indexer:
                 string = term + '; ' + str(new_post_list) + '\n'
                 f.write(string)
         
-        self.index_size += os.path.getsize('./index/index_' +str(first_word)+"_"+str(last_word)+ '.txt')
+        self.index_size += os.path.getsize('index/index_' +str(first_word)+"_"+str(last_word)+ '.txt')
         self.vocabulary_size.update(list(ordered_dict.keys()))
         f.close()
         
