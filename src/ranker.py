@@ -270,6 +270,7 @@ class Ranker:
                 if len(arr) > 1:
                     #Boost this docs
                     min_diff = self.getMinDiff(arr)
+                    print(str(min_diff))
                     if min_diff:
                         boo = self.calc_boost(min_diff)
                         scores[doc_id] += boo
@@ -482,7 +483,7 @@ class Ranker:
     def readQueryRel(self):
         rel_queries = {}
         query_index = 0
-        with open('queries/queries.relevance.txt','r') as q_rel:
+        with open('../queries/queries.relevance.txt','r') as q_rel:
             for line in q_rel.readlines():
                 line = line.replace("\n", "")
                 if 'Q:' in line:
@@ -503,7 +504,7 @@ class Ranker:
     def readQueryRes(self):
         rel_queries = {}
         query_index = 0
-        with open('search_output/results_queries_bm25.txt','r') as q_rel:
+        with open('../search_output/results_queries_bm25.txt','r') as q_rel:
             for line in q_rel.readlines():
                 line = line.replace("\n", "")
                 if 'Q:' in line:

@@ -51,7 +51,7 @@ class SPIMI:
                         os.makedirs("blocks")
 
                     self.indexer.write_block(self.block_num)
-                    print(time.time()-begin)
+                    print((time.time()-begin)/60)
                     self.block_num += 1
                     
                     # clear memory
