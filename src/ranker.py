@@ -50,7 +50,7 @@ class Ranker:
             begin = time.time()
             indexed_query = self.query_freq(self.tokenizer.get_tokens(queries_list[i], i))
 
-            print(indexed_query)
+            #print(indexed_query)
             print("Searching {}º query...".format(i+1))
             best_docs = []
             if self.method == 'vector':
@@ -270,7 +270,7 @@ class Ranker:
                 if len(arr) > 1:
                     #Boost this docs
                     min_diff = self.getMinDiff(arr)
-                    print(str(min_diff))
+                    
                     if min_diff:
                         boo = self.calc_boost(min_diff)
                         scores[doc_id] += boo
@@ -355,7 +355,7 @@ class Ranker:
                 print(right_index_file)
                 with open("index/" + index_file) as f:
                     for line in f.readlines():
-                        print(line)
+                        #print(line)
                         term_file,value = re.split('; ', line.rstrip('\n'), maxsplit=1)
                         self.temp_index[term_file] = { "docs": ast.literal_eval(value)}
                 # we find the right index file
